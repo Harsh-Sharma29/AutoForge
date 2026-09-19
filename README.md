@@ -1,25 +1,24 @@
 # AutoForge
-> An autonomous multi-agent software engineering system that plans, writes, validates, executes, and self-heals Python code inside secure Docker sandboxes.
+An autonomous multi-agent software engineering system that plans, writes, validates, executes, and self-heals Python code inside secure Docker sandboxes.
 
-## Demo / Links
+## 🎥 Demo & Links
 - 🎥 [Watch Demo](#) <!-- Add Demo Link Here -->
 - 💻 [GitHub Repository](https://github.com/Harsh-Sharma29/AutoForge)
-- 🌐 [Live Demo](#) <!-- Add Live URL if applicable -->
 - 📄 [Portfolio](https://harsh-sharma-portfolio12.netlify.app)
 
 ## Overview
-AutoForge is an advanced ReAct-based multi-agent system designed to act as an autonomous software engineer. It solves the problem of unreliable AI code generation by enforcing a strict pipeline: plan, generate, statically validate, execute in a secure sandbox, and self-heal based on real runtime tracebacks. 
+AutoForge is a ReAct-based multi-agent system designed to autonomously generate and iteratively refine code. It enforces a strict execution pipeline: plan, generate, statically validate, execute in a secure sandbox, and self-heal based on real runtime tracebacks.
 
-The architecture is built on LangGraph for stateful multi-agent orchestration, FastAPI for the backend API and real-time streaming, and Next.js for a professional IDE-like frontend. By combining AST-based static analysis with ephemeral Docker container execution, AutoForge ensures that AI-generated code is both safe to run and iteratively perfected without human intervention.
+The architecture uses LangGraph for stateful multi-agent orchestration, FastAPI for the backend API and streaming, and Next.js for the frontend. By combining AST-based static analysis with ephemeral Docker container execution, AutoForge ensures generated code runs securely and is iteratively corrected based on deterministic execution feedback.
 
 ## Key Engineering Highlights
 - **Multi-Agent Orchestration:** Powered by LangGraph, featuring specialized agents (Planner, Coder, Validator, Terminal, Debugger, Research, Knowledge) governed by deterministic intent routing.
-- **Sandboxed Execution:** AI-generated code is executed safely in ephemeral, read-only `python:3.11-slim` Docker containers with strict resource limits (256MB memory, 60s timeout).
-- **Self-Healing Loop:** Runtime tracebacks from the Docker sandbox are caught and routed to a dedicated Debugger agent, enabling autonomous, closed-loop error resolution.
-- **AST-Powered Static Validation:** Pre-execution static analysis intercepts dangerous operations (e.g., `os.remove`, `eval`) and enforces safe coding practices.
-- **Real-Time Streaming:** Built on FastAPI WebSockets and PubSub to stream sandbox stdout/stderr and pipeline state directly to the Next.js frontend in real time.
-- **Dynamic Multi-Provider LLMs:** A robust factory pattern supports seamless switching between Groq, Gemini, OpenAI, and Anthropic Claude models with fallback capabilities.
-- **Persistent Memory:** Utilizes PostgreSQL-backed checkpointers for conversation state management and context injection.
+- **Sandboxed Execution:** Code is executed in ephemeral, read-only `python:3.11-slim` Docker containers with strict resource limits (256MB memory, 60s timeout, restricted CPU and PIDs).
+- **Self-Healing Loop:** Runtime tracebacks from the Docker sandbox are caught and routed to a dedicated Debugger agent, enabling a closed-loop error resolution process.
+- **AST-Powered Static Validation:** Pre-execution static analysis intercepts configured dangerous operations (e.g., `os.remove`, `eval`) before they reach the runtime environment.
+- **Real-Time Streaming:** Uses FastAPI Server-Sent Events (SSE) to stream pipeline state and WebSockets to stream Docker execution logs directly to the Next.js frontend.
+- **Dynamic Multi-Provider LLMs:** A factory pattern supports switching between Groq, Gemini, OpenAI, and Anthropic Claude models with fallback capabilities.
+- **Persistent Memory & RAG:** Utilizes PostgreSQL-backed checkpointers for conversation state and ChromaDB for workspace indexing and Retrieval-Augmented Generation (RAG).
 
 ## Architecture
 ```mermaid
@@ -42,67 +41,69 @@ graph TD
     end
 
     Terminal -.->|Executes| Docker[Ephemeral Docker Sandbox]
-    Docker -.->|stdout/stderr| PubSub(PubSub / WebSockets)
+    Docker -.->|stdout/stderr| PubSub(WebSockets)
+    Router -.->|Pipeline State| SSE(Server-Sent Events)
     PubSub -.-> UI
+    SSE -.-> UI
     
     subgraph Data Layer
         DB[(PostgreSQL)] -.->|State/Checkpoints| Router
-        Memory[RAG/Memory] -.-> Coder
+        Memory[(ChromaDB)] -.->|Workspace Vectors| Coder
     end
 ```
 
-| Component | Responsibility |
-|---|---|
-| **Next.js Frontend** | Provides an IDE-like interface, real-time terminal output, and pipeline visualization. |
-| **FastAPI Backend** | Exposes REST APIs, manages WebSockets for real-time streaming, and orchestrates the LangGraph pipeline. |
-| **LangGraph Orchestrator** | Manages the state machine, routes user intent, and orchestrates agent transitions. |
-| **AST Validator** | Statically analyzes generated code to prevent unsafe operations before execution. |
-| **Docker Sandbox** | Runs generated code in an isolated, resource-constrained container and captures stdout/stderr. |
-| **PostgreSQL** | Persists conversation checkpoints and agent state for seamless session recovery. |
+| Component | Responsibility | Implementation |
+|---|---|---|
+| **Next.js Frontend** | User interface and real-time visualization. | React 19, Tailwind CSS. |
+| **FastAPI Backend** | REST APIs, WebSockets, SSE, and pipeline orchestration. | `src.api.server:app` running via Uvicorn. |
+| **LangGraph Orchestrator** | State machine management and agent transitions. | LangGraph checkpointer utilizing PostgreSQL. |
+| **AST Validator** | Static analysis to block unsafe operations. | Python `ast.NodeVisitor`. |
+| **Docker Sandbox** | Executes generated code in an isolated environment. | Docker Python SDK managing `python:3.11-slim`. |
 
 ## How It Works
-1. **User Submits Request:** The user provides a prompt via the Next.js frontend.
+1. **User Submits Request:** The prompt is sent via the Next.js frontend.
 2. **Intent Classification:** The Router agent classifies the request as `coding`, `research`, or `generic`.
-3. **Planning & Generation:** For coding tasks, the Planner outlines a mission brief. The Coder (powered by the selected LLM and ReAct tooling) synthesizes the required Python code.
-4. **Static Validation:** The Validator uses `ast.NodeVisitor` to inspect the code for hardcoded secrets or unauthorized system calls.
-5. **Sandboxed Execution:** Validated code is dispatched to the Terminal agent, which spins up a secure Docker container, mounts the code, and executes it.
-6. **Self-Healing (If Needed):** If execution fails, the Terminal captures the traceback and routes it to the Debugger. The Debugger synthesizes a fix and re-submits it to the Validator.
-7. **Real-Time Delivery:** Throughout the process, state changes and sandbox logs are streamed via WebSockets to the user's IDE.
+3. **Planning & Generation:** For coding tasks, the Planner outlines steps. The Coder (utilizing ReAct tooling) synthesizes the Python code.
+4. **Static Validation:** The Validator uses `ast.NodeVisitor` to inspect the code for hardcoded secrets or explicitly unauthorized system calls.
+5. **Sandboxed Execution:** Validated code is dispatched to the Terminal agent, which spins up a Docker container, mounts the code, and executes it.
+6. **Self-Healing (If Needed):** Execution failures capture tracebacks, routing them to the Debugger. The Debugger synthesizes a patch and re-submits it to the Validator.
+7. **Real-Time Delivery:** State changes are streamed via SSE, while sandbox logs are streamed via WebSockets to the UI.
 
 ## Core Features
 | Feature | Explanation | Implementation |
 |---|---|---|
-| **Autonomous Self-Healing** | The system automatically fixes its own runtime errors up to a configured retry limit. | Tracebacks are captured from Docker and fed into a closed LangGraph loop targeting the Debugger agent. |
-| **Secure Sandboxing** | Code execution cannot harm the host machine or access unauthorized network resources. | Uses the `docker` Python SDK to deploy `python:3.11-slim` containers with `read_only=True` and `mem_limit="256m"`. |
-| **AST Validation** | Prevents execution of malicious or destructive AI-generated code. | Custom Python `ast` parser intercepts functions like `exec`, `eval`, and specific `os` methods. |
-| **Live Terminal Streaming** | Users see code execution logs exactly as if they were running them locally. | Backend `PubSub` module and WebSockets stream Docker `logs(stream=True)` directly to the UI. |
-| **Multi-Model LLM Support** | Flexibility to use the most appropriate or cost-effective AI model. | Implemented via `llm_factory.py` supporting Groq, Gemini, OpenAI, and Anthropic APIs. |
-| **Contextual Memory** | Conversations and context persist across sessions. | Integrated LangGraph checkpointer utilizing PostgreSQL. |
+| **Autonomous Self-Healing** | Automatically fixes runtime errors up to a configured retry limit. | Tracebacks feed a closed LangGraph loop targeting the Debugger agent. |
+| **Sandboxed Execution** | Code runs in constrained ephemeral containers. | Docker Python SDK deploying `python:3.11-slim` with `read_only=True` and `mem_limit="256m"`. |
+| **AST Validation** | AST-based validation provides deterministic checks for configured unsafe operations before execution. | Python `ast` parser intercepts functions like `exec`, `eval`, and specific `os` methods. |
+| **Live Terminal Streaming** | Execution logs are visible in real-time. | Backend `PubSub` module and WebSockets stream Docker logs directly to the UI. |
+| **Multi-Model LLM Support** | Flexibility across LLM providers. | `llm_factory.py` supporting Groq, Gemini, OpenAI, and Anthropic. |
+| **Workspace RAG & Memory** | Persistent context across sessions and workspace search. | LangGraph Postgres checkpointer and ChromaDB vector indexing. |
 
 ## AI / Agent Architecture
 AutoForge relies on a strictly defined ReAct workflow orchestrated by LangGraph:
-- **Router:** The entry point. Uses LLM classification to route the prompt to the appropriate subsystem, preventing unnecessary and expensive Docker invocations for simple Q&A.
+- **Router:** The entry point. Uses LLM classification to route the prompt to the appropriate subsystem.
 - **Planner:** Breaks down complex user requests into actionable steps and artifact targets.
-- **Coder:** The primary synthesis engine. It has access to tool nodes (e.g., PyGithub for repository navigation, Tavily for web search).
-- **Validator:** A programmatic (non-LLM) node that enforces security policies.
+- **Coder:** The primary synthesis engine. It accesses tool nodes (e.g., PyGithub, Tavily).
+- **Validator:** A programmatic node that enforces security policies.
 - **Terminal:** The execution bridge interacting with the Docker daemon.
-- **Debugger:** An LLM node specifically prompted to analyze tracebacks and patch existing code without rewriting from scratch.
+- **Debugger:** An LLM node specifically prompted to analyze tracebacks and patch existing code.
+- **Research & Knowledge:** Dedicated agents for documentation retrieval and general queries.
 
 *Workflow:* Plan → Generate → Validate → Execute → Observe → Debug → Repair → Re-execute
 
 ## Security
-- **Sandboxing:** Docker containers are run in `read_only` mode with restricted PIDs (`pids_limit=50`) and CPU/memory quotas to prevent fork bombs and resource exhaustion.
-- **Input Validation (AST):** Prevents the Coder agent from accidentally (or maliciously) generating code that compromises the environment.
-- **Container Timeouts:** A strict 60-second execution limit ensures infinite loops in generated code do not hang the system.
+- **Sandboxing:** Docker containers run in `read_only` mode with restricted PIDs (`pids_limit=50`) and memory limits (`256m`) to prevent fork bombs and resource exhaustion.
+- **Input Validation (AST):** Prevents the Coder agent from generating code containing specific unauthorized system calls.
+- **Container Timeouts:** A strict 60-second execution limit ensures infinite loops do not hang the system.
 
 ## Tech Stack
 | Category | Technologies |
 |---|---|
-| **Language** | Python 3.11, TypeScript |
+| **Language** | Python 3.10+ (Backend), Python 3.11 (Sandbox), TypeScript |
 | **AI / Orchestration** | LangGraph, LangChain, Groq, Google Gemini, OpenAI, Anthropic |
-| **Backend** | FastAPI, Uvicorn, WebSockets |
-| **Frontend** | Next.js 15, React, Tailwind CSS |
-| **Databases** | PostgreSQL |
+| **Backend** | FastAPI, Uvicorn, WebSockets, SSE |
+| **Frontend** | Next.js, React 19, Tailwind CSS |
+| **Databases** | PostgreSQL, ChromaDB |
 | **Infrastructure** | Docker, Docker Compose |
 | **External APIs** | Tavily (Search), PyGithub |
 
@@ -112,17 +113,20 @@ AutoForge/
 ├── backend/
 │   ├── src/
 │   │   ├── agents/      # LangGraph agent definitions (Coder, Debugger, etc.)
-│   │   ├── api/         # FastAPI routes and WebSocket handlers
-│   │   ├── core/        # Memory, Checkpointer, LLM Factories, PubSub
-│   │   ├── graph/       # LangGraph state machine orchestration
+│   │   ├── api/         # FastAPI routes, WebSocket and SSE handlers
+│   │   ├── core/        # Checkpointer, LLM Factories, RAG, PubSub
 │   │   ├── sandbox/     # Docker execution manager
 │   │   └── tools/       # ReAct tools (File Ops, Web Search, GitHub)
 │   ├── main.py          # CLI entry point
+│   ├── Dockerfile
 │   └── requirements.txt 
 ├── frontend/
 │   ├── src/             # Next.js App Router, Components, Hooks
 │   ├── package.json     
-│   └── next.config.ts   
+│   ├── next.config.ts   
+│   └── Dockerfile
+├── nginx/
+│   └── Dockerfile
 ├── docker-compose.yml   # Full stack deployment configuration
 └── README.md
 ```
@@ -130,9 +134,9 @@ AutoForge/
 ## Local Setup
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.10+
 - Node.js 18+
-- Docker Desktop (Must be running for sandboxed execution)
+- Docker Desktop (Required for sandboxed execution)
 - API Keys for your preferred LLM
 
 ### 1. Clone & Install
@@ -141,9 +145,11 @@ git clone https://github.com/Harsh-Sharma29/AutoForge.git
 cd AutoForge
 
 # Backend Setup
+cd backend
 python -m venv .venv
 source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
+cd ..
 
 # Frontend Setup
 cd frontend
@@ -152,7 +158,7 @@ cd ..
 ```
 
 ### 2. Environment Configuration
-Create a `.env` file in the root directory (refer to `.env.example` if available).
+Create a `.env` file in the root directory.
 ```env
 # Example .env configuration
 LLM_PROVIDER=gemini
@@ -166,7 +172,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8005
 ```
 
 ### 3. Start Infrastructure
-Start PostgreSQL (and optionally the full stack) via Docker Compose:
+Start the full stack (PostgreSQL, Backend, Frontend, Nginx) via Docker Compose:
 ```bash
 docker compose up -d --build
 ```
@@ -185,7 +191,7 @@ python -m uvicorn src.api.server:app --host 127.0.0.1 --port 8005
 cd frontend
 npm run dev
 ```
-Navigate to `http://localhost:3000` (or `3005` based on your frontend port config) to access the UI.
+Navigate to `http://localhost:3005` to access the UI.
 
 ## Environment Variables
 | Variable | Purpose | Required |
@@ -204,38 +210,35 @@ Navigate to `http://localhost:3000` (or `3005` based on your frontend port confi
 | `GET` | `/api/v1/health` | System health check and telemetry |
 | `POST` | `/api/v1/session/new` | Generate a new session `thread_id` |
 | `GET` | `/api/v1/history/{thread_id}` | Retrieve conversation history for a specific session |
-| `POST` | `/api/v1/execute` | Trigger the LangGraph pipeline |
-| `WS` | `/api/v1/ws/terminal/{thread_id}` | WebSocket connection for real-time sandbox streaming |
+| `POST` | `/api/v1/execute` | Execute LangGraph pipeline and stream state via SSE |
+| `WS` | `/api/v1/ws/terminal/{thread_id}` | WebSocket connection for real-time sandbox logs |
 
 ## Screenshots
 <!-- Add screenshots here to demonstrate the Next.js UI, Live Terminal, and Graph State -->
 
-## Demo
-🎥 [Watch the Demo](#)
-> Watch AutoForge autonomously plan, write, and debug a complex Python script in real-time.
-
 ## Engineering Decisions
-- **LangGraph over LangChain Chains:** Chose LangGraph to support cyclical workflows (like the Debugger-Validator loop) and strict state management, which are impossible with linear DAG chains.
-- **Docker over Local Execution:** Executing AI-generated code directly on the host is a severe security risk. Docker provides a fast, ephemeral, and strictly resource-constrained sandbox.
-- **AST Parsing for Validation:** Relying on an LLM to "check its own work" for security flaws is unreliable. Programmatic AST parsing guarantees that specific dangerous system calls are caught 100% of the time.
-- **PostgreSQL for Checkpointing:** Enables robust, long-term persistence of conversation graphs, allowing users to resume complex software engineering sessions across page reloads.
+- **LangGraph over Linear Chains:** Chose LangGraph to support cyclical workflows (like the Debugger-Validator loop) and strict state management.
+- **Docker over Local Execution:** Executing generated code in Docker provides a fast, ephemeral, and resource-constrained sandbox.
+- **AST Parsing for Validation:** Programmatic AST parsing provides deterministic rule enforcement for catching specific unsafe method calls.
+- **PostgreSQL for Checkpointing:** Enables persistence of conversation graphs, allowing users to resume sessions across page reloads.
+- **Dual Streaming Mechanisms:** WebSockets handle raw high-throughput Docker logs, while SSE manages structured pipeline state updates.
 
 ## Reliability / Error Handling
-- **Deterministic Routing:** The Router agent prevents infinite loops by categorizing tasks before they reach the Coder.
-- **Timeouts:** A hard 60-second timeout on Docker execution prevents the system from hanging on infinite `while` loops generated by the AI.
-- **Fallback Logic:** `llm_fallback.py` implements routing to backup LLMs if the primary provider experiences downtime or rate limits.
-- **State Recovery:** LangGraph checkpoints allow the system to recover the exact graph state if the backend restarts.
+- **Deterministic Routing:** The Router agent categorizes tasks to prevent unnecessary execution loops.
+- **Timeouts:** A hard 60-second timeout on Docker execution prevents the system from hanging on infinite loops.
+- **Fallback Logic:** `llm_fallback.py` implements routing to backup LLMs if the primary provider experiences rate limits.
+- **State Recovery:** LangGraph checkpoints allow the system to recover graph state if the backend restarts.
 
 ## Current Status
-- ✅ **Implemented:** Multi-agent pipeline, Docker sandboxing, AST validation, WebSockets streaming, Next.js UI, PostgreSQL Checkpointing.
-- 🚧 **Deployment:** Currently optimized for local development and demonstration via Docker Compose.
-- ⚠️ **Limitations:** The sandbox currently only supports Python environments natively. Persistent storage across Docker sandbox runs is not supported by design (ephemeral).
+> Status: Actively developed; optimized for local development and demonstration.
+
+- ✅ **Implemented:** Multi-agent pipeline, Docker sandboxing, AST validation, SSE/WebSockets streaming, Next.js UI, PostgreSQL Checkpointing, RAG.
+- ⚠️ **Limitations:** The sandbox natively supports Python environments. Persistent storage across Docker sandbox runs is not supported by design.
 
 ## Future Improvements
 - [ ] Support for Node.js/TypeScript sandboxing
-- [ ] Integration with CI/CD pipelines (e.g., auto-fixing GitHub Issues)
-- [ ] Enhanced RAG over local codebases using pgvector
-- [ ] Persistent workspace volumes for multi-file projects spanning days
+- [ ] Integration with CI/CD pipelines
+- [ ] Persistent workspace volumes for multi-file projects
 
 ## Author
 **Harsh Sharma**
