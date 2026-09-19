@@ -19,6 +19,7 @@ The architecture uses LangGraph for stateful multi-agent orchestration, FastAPI 
 - **Real-Time Streaming:** Uses FastAPI Server-Sent Events (SSE) to stream pipeline state and WebSockets to stream Docker execution logs directly to the Next.js frontend.
 - **Dynamic Multi-Provider LLMs:** A factory pattern supports switching between Groq, Gemini, OpenAI, and Anthropic Claude models with fallback capabilities.
 - **Persistent Memory & RAG:** Utilizes PostgreSQL-backed checkpointers for conversation state and ChromaDB for workspace indexing and Retrieval-Augmented Generation (RAG).
+- **CI/CD Automation:** Implemented GitHub Actions workflows to automate Docker builds, EC2 deployment via SSH, and post-deployment health checks for frontend and backend services.
 
 ## Architecture
 ```mermaid
@@ -237,7 +238,6 @@ Navigate to `http://localhost:3005` to access the UI.
 
 ## Future Improvements
 - [ ] Support for Node.js/TypeScript sandboxing
-- [ ] Integration with CI/CD pipelines
 - [ ] Persistent workspace volumes for multi-file projects
 
 ## Author
